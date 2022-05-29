@@ -117,6 +117,8 @@ void updateDisplay() {
   } else {
     if(digitalRead(secsBtn) == HIGH) { // display seconds
       sevseg.setChars(formatSeconds(second()).c_str());
+      Serial.write(formatSecondsC(second()));
+      Serial.write("\n");
       sevseg.refreshDisplay();
       digitalWrite(colon, LOW);
     } else {                           // display normal time
@@ -209,8 +211,8 @@ String formatSeconds(int s) {
   }
 }
 
-const char *formatSecondsC(int s) {
-  char secondsString;
-  sprintf(secondsString, "%i", s);
+char formatSecondsC(int s) {
+  char secondsString[10];
+  sprintf(secondsString, "%d", s);
   return secondsString;
 }
