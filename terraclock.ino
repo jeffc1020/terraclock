@@ -138,12 +138,13 @@ void loop() {
  * @return inputHour + timeOffset, rolling over if needed
  */
 int timeZoneCorrection(int inputHour, int timeOffset) {
-  if(inputHour + timeOffset < 0) {
-    return 24 + (inputHour + timeOffset);
-  } else if(inputHour + timeOffset > 23) {
-    return (inputHour + timeOffset - 24);
+  int result = inputHour + timeOffset;
+  if(result < 0) {
+    return 24 + (result);
+  } else if(result > 23) {
+    return (result - 24);
   } else {
-    return inputHour + timeOffset;
+    return result;
   }
 }
 
@@ -162,26 +163,25 @@ int timeZoneCorrection(int inputHour, int timeOffset) {
  * formatTime(15, 30, true) -> " 230"
 */
 String formatTime(int h, int m, bool hr12) {
-  String result = "";
   String newHr;
   String newMin;
   if(hr12) {
     if(h == 0 || h == 12) {
-      newHr = 12;
+      newHr = "12";
     } else {
-      newHr = h % 12;
+      newHr = String(h % 12);
     }
   } else {
     if(h < 10) {
-      newHr = "0" + h;
+      newHr = "0" + String(h);
     } else {
-      newHr = h;
+      newHr = String(h);
     }
   }
   if(m < 10) {
     newMin = "0" + String(m);
   } else {
-    newMin = m;
+    newMin = String(m);
   }
   if(newHr.length() == 1) {
     return (" " + newHr + newMin);
