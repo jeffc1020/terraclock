@@ -75,7 +75,7 @@ void setup() {
   pinMode(dig4, OUTPUT);
   pinMode(secsBtn, INPUT);
   
-  // Serial.begin(115200);
+  Serial.begin(115200);
   GPS.begin(9600); // GPS module uses 9600 baud
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY); // get recommended minimum amount of data plus fix data
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_100_MILLIHERTZ); // updates once every 10 seconds
@@ -105,18 +105,21 @@ void loop() {
   if(GPS.fix) {
     neverSynched = false;
   }
-  
+
+  updateDisplay();
+}
+
+void updateDisplay() {
   if(!GPS.fix && neverSynched) {  // display dashes if there is no GPS fix and RTC never received correct time
     sevseg.setChars("----");
     sevseg.refreshDisplay();
     digitalWrite(colon, HIGH);
   } else {
     if(digitalRead(secsBtn) == HIGH) { // display seconds
-      sevseg.setNumber(second());
       sevseg.setChars(formatSeconds(second()).c_str());
       sevseg.refreshDisplay();
       digitalWrite(colon, LOW);
-    } else {                                // display normal time
+    } else {                           // display normal time
       sevseg.setChars(formatTime(hour(), minute(), true).c_str());
       // sevseg.setNumber(hour() * 100 + minute());
       sevseg.refreshDisplay();
@@ -204,4 +207,10 @@ String formatSeconds(int s) {
   } else {
     return "  " + String(s);
   }
+}
+
+const char *formatSecondsC(int s) {
+  char secondsString;
+  sprintf(secondsString, "%i", s);
+  return secondsString;
 }
