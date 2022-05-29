@@ -35,28 +35,28 @@
  *  2K ohms is an even more reasonable brightness
  */ 
 
+const byte segA = 2;
+const byte segB = 3;
+const byte segC = 4;
+const byte segD = 5;
+const byte segE = 6;
+const byte segF = 7;
+const byte segG = 8;
+const byte colon = 9;
+const byte dig1 = A0;
+const byte dig2 = A1;
+const byte dig3 = A2;
+const byte dig4 = A3;
+const byte secsBtn = A5;
+const byte rxPin = 11;
+const byte txPin = 10;
+
 int currentHour = -1;
 int currentMinute = -1;
-
 int timeZone = -4;
+bool neverSynched = true;
 
-const int segA = 2;
-const int segB = 3;
-const int segC = 4;
-const int segD = 5;
-const int segE = 6;
-const int segF = 7;
-const int segG = 8;
-const int colon = 9;
-
-const int dig1 = A0;
-const int dig2 = A1;
-const int dig3 = A2;
-const int dig4 = A3;
-
-const int secsBtn = A5;
-
-SoftwareSerial mySerial(11, 10);
+SoftwareSerial mySerial(rxPin, txPin);
 Adafruit_GPS GPS(&mySerial);
 SevSeg sevseg;
 
@@ -74,6 +74,7 @@ void setup() {
   pinMode(dig3, OUTPUT);
   pinMode(dig4, OUTPUT);
   pinMode(secsBtn, INPUT);
+  
   // Serial.begin(115200);
   GPS.begin(9600); // GPS module uses 9600 baud
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY); // get recommended minimum amount of data plus fix data
@@ -92,7 +93,6 @@ void setup() {
     leadingZeros, disableDecPoint);
 }
 
-uint32_t timer = millis();
 void loop() {
   char c = GPS.read();
   if (GPS.newNMEAreceived()) {
@@ -100,14 +100,13 @@ void loop() {
     currentHour = GPS.hour;
     currentMinute = GPS.minute;
     setTime(timeZoneCorrection(GPS.hour, timeZone), GPS.minute, GPS.seconds, GPS.day, GPS.month, GPS.year);
-    // adjustTime(timeZone * SECS_PER_HOUR);
   }
 
-  if(millis() - timer > 1000) { // if a second has elapsed...
-    timer = millis();           // reset timer
+  if(GPS.fix) {
+    neverSynched = false;
   }
   
-  if(!GPS.fix) {              // display dashes if there is no GPS fix
+  if(!GPS.fix && neverSynched) {  // display dashes if there is no GPS fix and RTC never received correct time
     sevseg.setChars("----");
     sevseg.refreshDisplay();
     digitalWrite(colon, HIGH);
