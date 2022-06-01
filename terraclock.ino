@@ -51,10 +51,10 @@ const byte secsBtn = A5;
 const byte rxPin = 11;
 const byte txPin = 10;
 
-int currentHour = -1;
-int currentMinute = -1;
 int timeZone = -4;
 bool neverSynched = true;
+
+byte displayMode = 0;
 
 SoftwareSerial mySerial(rxPin, txPin);
 Adafruit_GPS GPS(&mySerial);
@@ -93,14 +93,22 @@ void setup() {
     leadingZeros, disableDecPoint);
 }
 
+bool timeUpdated = false;
+int timer = millis();
 void loop() {
   char c = GPS.read();
   if (GPS.newNMEAreceived()) {
     GPS.parse(GPS.lastNMEA()); // parsing is working!! somehow
-    currentHour = GPS.hour;
-    currentMinute = GPS.minute;
-    setTime(timeZoneCorrection(GPS.hour, timeZone), GPS.minute, GPS.seconds, GPS.day, GPS.month, GPS.year);
+    timeUpdated = false;
   }
+
+  if (GPS.secondsSinceTime() >= 2 && !timeUpdated) { // avoids trying to adjust the time while receiving serial data
+    setTime(GPS.hour, GPS.minute, GPS.seconds, GPS.day, GPS.month, GPS.year);
+    adjustTime((timeZone * 3600) + 2);
+    timeUpdated = true;
+  }
+
+
 
   if(GPS.fix) {
     neverSynched = false;
@@ -110,22 +118,20 @@ void loop() {
 }
 
 void updateDisplay() {
-  if(!GPS.fix && neverSynched) {  // display dashes if there is no GPS fix and RTC never received correct time
+  if(neverSynched) {
     sevseg.setChars("----");
     sevseg.refreshDisplay();
-    digitalWrite(colon, HIGH);
+    digitalWrite(colon, LOW);
   } else {
-    if(digitalRead(secsBtn) == HIGH) { // display seconds
+    if(digitalRead(secsBtn) == HIGH) {
       sevseg.setChars(formatSeconds(second()).c_str());
-      Serial.write(formatSecondsC(second()));
-      Serial.write("\n");
       sevseg.refreshDisplay();
       digitalWrite(colon, LOW);
-    } else {                           // display normal time
+    } else {
       sevseg.setChars(formatTime(hour(), minute(), true).c_str());
       // sevseg.setNumber(hour() * 100 + minute());
       sevseg.refreshDisplay();
-      if(second() % 2 == 0) {  // blinks colon
+      if(second() % 2 == 0) {
         digitalWrite(colon, HIGH);
       } else {
         digitalWrite(colon, LOW);
@@ -209,10 +215,4 @@ String formatSeconds(int s) {
   } else {
     return "  " + String(s);
   }
-}
-
-char formatSecondsC(int s) {
-  char secondsString[10];
-  sprintf(secondsString, "%d", s);
-  return secondsString;
 }
