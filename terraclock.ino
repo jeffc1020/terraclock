@@ -51,6 +51,7 @@ const byte secsBtn = A5;
 const byte rxPin = 11;
 const byte txPin = 10;
 
+time_t currentTime = 0;
 int timeZone = -4;
 bool neverSynched = true;
 
@@ -93,23 +94,17 @@ void setup() {
     leadingZeros, disableDecPoint);
 }
 
-bool timeUpdated = false;
 int timer = millis();
 void loop() {
   char c = GPS.read();
   if (GPS.newNMEAreceived()) {
     GPS.parse(GPS.lastNMEA()); // parsing is working!! somehow
-    timeUpdated = false;
+    currentTime = now();
+    currentTime += timeZone * 3600;
+    // setTime(GPS.hour, GPS.minute, GPS.seconds, GPS.day, GPS.month, GPS.year);
+    setTime();
   }
-
-  if (GPS.secondsSinceTime() >= 2 && !timeUpdated) { // avoids trying to adjust the time while receiving serial data
-    setTime(GPS.hour, GPS.minute, GPS.seconds, GPS.day, GPS.month, GPS.year);
-    adjustTime((timeZone * 3600) + 2);
-    timeUpdated = true;
-  }
-
-
-
+  
   if(GPS.fix) {
     neverSynched = false;
   }
@@ -117,23 +112,31 @@ void loop() {
   updateDisplay();
 }
 
+const uint8_t monthDays[]={31,28,31,30,31,30,31,31,30,31,30,31};
+time_t getUnixTime(int hour, int minute, int seconds, int day, int month, int year) {
+  return year * SECS_PER_YEAR + 
+}
+
 void updateDisplay() {
   if(neverSynched) {
     sevseg.setChars("----");
     sevseg.refreshDisplay();
     digitalWrite(colon, LOW);
-  } else {
+  } 
+  else {
     if(digitalRead(secsBtn) == HIGH) {
       sevseg.setChars(formatSeconds(second()).c_str());
       sevseg.refreshDisplay();
       digitalWrite(colon, LOW);
-    } else {
+    } 
+    else {
       sevseg.setChars(formatTime(hour(), minute(), true).c_str());
       // sevseg.setNumber(hour() * 100 + minute());
       sevseg.refreshDisplay();
       if(second() % 2 == 0) {
         digitalWrite(colon, HIGH);
-      } else {
+      } 
+      else {
         digitalWrite(colon, LOW);
       }
     }
@@ -151,9 +154,11 @@ int timeZoneCorrection(int inputHour, int timeOffset) {
   int result = inputHour + timeOffset;
   if(result < 0) {
     return 24 + (result);
-  } else if(result > 23) {
+  } 
+  else if(result > 23) {
     return (result - 24);
-  } else {
+  } 
+  else {
     return result;
   }
 }
@@ -178,19 +183,23 @@ String formatTime(int h, int m, bool hr12) {
   if(hr12) {
     if(h == 0 || h == 12) {
       newHr = "12";
-    } else {
+    } 
+    else {
       newHr = String(h % 12);
     }
-  } else {
+  } 
+  else {
     if(h < 10) {
       newHr = "0" + String(h);
-    } else {
+    } 
+    else {
       newHr = String(h);
     }
   }
   if(m < 10) {
     newMin = "0" + String(m);
-  } else {
+  } 
+  else {
     newMin = String(m);
   }
   if(newHr.length() == 1) {
@@ -212,7 +221,8 @@ String formatTime(int h, int m, bool hr12) {
 String formatSeconds(int s) {
   if(s < 10) {
     return "  0" + String(s);
-  } else {
+  } 
+  else {
     return "  " + String(s);
   }
 }
