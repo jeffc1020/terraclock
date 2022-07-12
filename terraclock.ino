@@ -1,128 +1,81 @@
 #include <TimeLib.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include "Adafruit_LEDBackpack.h"
 #include <Adafruit_GPS.h>
 #include <SoftwareSerial.h>
-#include <SevSeg.h>
 
 /* TERRACLOCK
  * A robust GPS-synchronized clock
  * Copyright 2022 Jeff Cutcher
- * 
- * 595 Shift register IC pinout
- *      ---o---
- *  Qb |1    16| Vcc
- *  Qc |2    15| Qa
- *  Qd |3    14| SER (DATA)
- *  Qe |4    13| OE (Output Enable) (pulled low)
- *  Qf |5    12| RCLK (LATCH)
- *  Qg |6    11| SRCLK (CLOCK)
- *  Qh |7    10| SRCLR (held high)
- * GND |8     9| Qh' (daisy chain)
- *      -------
- * 
- * LuckyLight KW4-56NCHGA-P 7-segment display pinout
- * FRONT VIEW
- * 
- *     -   +   +   -   -   +   +
- *    h10  a   f  h1  m10  b   :
- *   --|---|---|---|---|---|---|--
- *  |                             |
- *   --|---|---|---|---|---|---|--
- *     e   d  dot  c   g   m1  :
- *     +   +   +   +   +   -   -
- *     
- *  max 15mA per segment (333 ohms at 5v)
- *  1K ohms works great
- *  2K ohms is an even more reasonable brightness
  */ 
 
-const byte segA = 2;
-const byte segB = 3;
-const byte segC = 4;
-const byte segD = 5;
-const byte segE = 6;
-const byte segF = 7;
-const byte segG = 8;
-const byte colon = 9;
-const byte dig1 = A0;
-const byte dig2 = A1;
-const byte dig3 = A2;
-const byte dig4 = A3;
+// Pinouts
 const byte secsBtn = A5;
-const byte rxPin = 11;
-const byte txPin = 10;
+const byte rxPin = 2;
+const byte txPin = 3;
 
 time_t currentTime = 0;
-int timeZone = -4;
+int hourOffset = -4;
+int minuteOffset = 0;
 bool neverSynched = true;
+int timeZone = -4;
 
 byte displayMode = 0;
 
+Adafruit_7segment matrix = Adafruit_7segment();
+
 SoftwareSerial mySerial(rxPin, txPin);
 Adafruit_GPS GPS(&mySerial);
-SevSeg sevseg;
 
 void setup() {
-  pinMode(segA, OUTPUT);
-  pinMode(segB, OUTPUT);
-  pinMode(segC, OUTPUT);
-  pinMode(segD, OUTPUT);
-  pinMode(segE, OUTPUT);
-  pinMode(segF, OUTPUT);
-  pinMode(segG, OUTPUT);
-  pinMode(colon, OUTPUT);
-  pinMode(dig1, OUTPUT);
-  pinMode(dig2, OUTPUT);
-  pinMode(dig3, OUTPUT);
-  pinMode(dig4, OUTPUT);
   pinMode(secsBtn, INPUT);
-  
+
+  matrix.begin(0x70);
+
+  while (!Serial);
   Serial.begin(115200);
   GPS.begin(9600); // GPS module uses 9600 baud
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY); // get recommended minimum amount of data plus fix data
-  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_100_MILLIHERTZ); // updates once every 10 seconds
-
-  byte numDigits = 4;
-  byte digitPins[] = {dig1, dig2, dig3, dig4};
-  byte segmentPins[] = {segA, segB, segC, segD, segE, segF, segG};
-  bool resistorsOnSegments = true;
-  byte hardwareConfig = COMMON_CATHODE;
-  bool updateWithDelays = false;
-  bool leadingZeros = false;
-  bool disableDecPoint = true;
-
-  sevseg.begin(hardwareConfig, numDigits, digitPins, segmentPins, resistorsOnSegments, updateWithDelays,
-    leadingZeros, disableDecPoint);
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // updates once every 10 seconds
 }
 
-int timer = millis();
+uint32_t timer = millis();
 void loop() {
   char c = GPS.read();
+  if (c) {
+    Serial.write(c);
+  }
   if (GPS.newNMEAreceived()) {
     GPS.parse(GPS.lastNMEA()); // parsing is working!! somehow
     currentTime = now();
     currentTime += timeZone * 3600;
-    // setTime(GPS.hour, GPS.minute, GPS.seconds, GPS.day, GPS.month, GPS.year);
-    setTime();
+    setTime(GPS.hour, GPS.minute, GPS.seconds, GPS.day, GPS.month, GPS.year);
+    matrix.print(GPS.seconds, DEC);
+    matrix.writeDisplay();
+  }
+
+  if(millis() - timer > 2000) {
+    timer = millis();
+    Serial.write(c);
   }
   
   if(GPS.fix) {
     neverSynched = false;
   }
 
-  updateDisplay();
-}
-
-const uint8_t monthDays[]={31,28,31,30,31,30,31,31,30,31,30,31};
-time_t getUnixTime(int hour, int minute, int seconds, int day, int month, int year) {
-  return year * SECS_PER_YEAR + 
+  // updateDisplay();  
 }
 
 void updateDisplay() {
   if(neverSynched) {
-    sevseg.setChars("----");
-    sevseg.refreshDisplay();
-    digitalWrite(colon, LOW);
-  } 
+    matrix.print("----");
+    matrix.writeDisplay();
+  } else {
+    matrix.print(formatTime(hour(), minute(), true).c_str());
+    matrix.writeDisplay();
+  }
+  /*
   else {
     if(digitalRead(secsBtn) == HIGH) {
       sevseg.setChars(formatSeconds(second()).c_str());
@@ -140,7 +93,7 @@ void updateDisplay() {
         digitalWrite(colon, LOW);
       }
     }
-  }
+  }*/
 }
 
 /**
