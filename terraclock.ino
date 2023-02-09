@@ -79,6 +79,7 @@ void cycleDisplayMode_ISR() {
 
 void updateDisplay() {
   switch(displayMode) {
+    /* Time */
     case 0:
       if(neverSynched) {
           displayDashes();
@@ -86,6 +87,7 @@ void updateDisplay() {
         displayTime(GPS.hour, GPS.minute, hourOffset, true, (GPS.seconds % 2 == 1));
       }
       break;
+    /* Seconds */
     case 1:
       if(neverSynched) {
           displayDashes();
@@ -93,12 +95,15 @@ void updateDisplay() {
         displaySeconds(GPS.seconds);
       }
       break;
+    /* Alarm set */
     case 2:
       displayTime(0, 0, 0, true, true);
       break;
+    /* Time zone */
     case 3:
       displayDashes();
       break;
+    /* Info */
     case 4:
       displayDashes();
       break;
