@@ -3,32 +3,35 @@
 //#include <SoftwareSerial.h>
 
 /* TERRACLOCK
- * A robust GPS-synchronized clock
- * Copyright 2022 Jeff Cutcher
- */ 
+ * A GPS-synchronized clock
+ * Copyright 2023 Jeff Cutcher */
+
+#define TIME_MODE 0
+#define SECONDS_MODE 1
+#define TIME_ZONE_MODE 2
+
+byte displayMode = TIME_MODE;
 
 // Pinouts 
-const byte secsBtn = 2;
+const byte modeBtn = 2;
+const byte upBtn = 5;
 const byte rxPin = 3;
 const byte txPin = 4;
 
-int hourOffset = -4;
+// Time zone info (these must be ints)
+int hourOffset = -5;
 int minuteOffset = 0;
 
-byte displayMode = 0;
-/*
- * 0: normal time
- * 1: seconds
- * 2: alarm set
- * 3: time zone set
- * 4: 12hr / 24hr set
- * 5: brightness set
- */
+// Button debouncing
+unsigned int modeButtonTime = 0;
+unsigned int lastModeButtonTime = 0;
+unsigned int upButtonTime = 0;
+unsigned int lastUpButtonTime = 0;
 
-unsigned long modeButtonTime = 0;
-unsigned long lastModeButtonTime = 0;
-
+// Has the clock been synched with GPS?
 bool neverSynched = true;
+
+bool hr12 = true;
 
 Adafruit_7segment disp = Adafruit_7segment();
 
@@ -36,7 +39,7 @@ SoftwareSerial mySerial(rxPin, txPin);
 Adafruit_GPS GPS(&mySerial);
 
 void setup() {
-  pinMode(secsBtn, INPUT);
+  pinMode(modeBtn, INPUT);
 
   GPS.begin(9600); // GPS module uses 9600 baud
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY); // get recommended minimum amount of data plus fix data
@@ -45,7 +48,8 @@ void setup() {
   disp.begin(0x70);
   disp.setBrightness(0);
 
-  attachInterrupt(digitalPinToInterrupt(secsBtn), cycleDisplayMode_ISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(modeBtn), cycleDisplayMode_ISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(upBtn), upButtonPress_ISR, RISING);
 }
 
 uint32_t timer = millis();
@@ -68,50 +72,52 @@ void loop() {
 void cycleDisplayMode_ISR() {
   modeButtonTime = millis();
   if(modeButtonTime - lastModeButtonTime > 200) {
-    if(displayMode >= 5) {
+    if(displayMode == TIME_ZONE_MODE) {
     displayMode = 0;
     } else {
       displayMode++;
     }
-  }
   lastModeButtonTime = modeButtonTime;
+  }
+}
+
+void upButtonPress_ISR() {
+  upButtonTime = millis();
+  if(upButtonTime - lastUpButtonTime > 150) {
+    if(displayMode == TIME_MODE) {
+      hr12 = !hr12;
+    } else if (displayMode == TIME_ZONE_MODE) {
+      if (hourOffset == 12)
+        hourOffset = -12;
+      else
+        ++hourOffset;
+    }
+    lastUpButtonTime = upButtonTime;
+  }
 }
 
 void updateDisplay() {
   switch(displayMode) {
-    /* Time */
-    case 0:
+    case TIME_MODE:
       if(neverSynched) {
           displayDashes();
       } else {
-        displayTime(GPS.hour, GPS.minute, hourOffset, true, (GPS.seconds % 2 == 1));
+        displayTime(GPS.hour, GPS.minute, hourOffset, hr12, (GPS.seconds % 2 == 1));
       }
       break;
-    /* Seconds */
-    case 1:
+    case SECONDS_MODE:
       if(neverSynched) {
           displayDashes();
       } else {
         displaySeconds(GPS.seconds);
       }
       break;
-    /* Alarm set */
-    case 2:
-      displayTime(0, 0, 0, true, true);
-      break;
-    /* Time zone */
-    case 3:
-      displayDashes();
-      break;
-    /* Info */
-    case 4:
-      displayDashes();
-      break;
-    case 5:
-      displayDashes();
+    case TIME_ZONE_MODE:
+      disp.print(hourOffset);
+      disp.writeDisplay();
       break;
     default:
-      displayMode = 0;
+      displayMode = TIME_MODE;
       break;
   }
 }
