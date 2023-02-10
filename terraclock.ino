@@ -9,6 +9,9 @@
 #define TIME_MODE 0
 #define SECONDS_MODE 1
 #define TIME_ZONE_MODE 2
+#define SET1224_MODE 3
+
+byte modeCount = 4;
 
 byte displayMode = TIME_MODE;
 
@@ -23,10 +26,10 @@ int hourOffset = -5;
 int minuteOffset = 0;
 
 // Button debouncing
-unsigned int modeButtonTime = 0;
-unsigned int lastModeButtonTime = 0;
-unsigned int upButtonTime = 0;
-unsigned int lastUpButtonTime = 0;
+unsigned long modeButtonTime = 0;
+unsigned long lastModeButtonTime = 0;
+unsigned long upButtonTime = 0;
+unsigned long lastUpButtonTime = 0;
 
 // Has the clock been synched with GPS?
 bool neverSynched = true;
@@ -53,6 +56,7 @@ void setup() {
 }
 
 uint32_t timer = millis();
+unsigned long timeSinceInteraction = millis();
 void loop() {
   char c = GPS.read();
   if (GPS.newNMEAreceived()) {
@@ -67,13 +71,19 @@ void loop() {
     timer = millis();
     updateDisplay();
   }
+
+  if(millis() - timeSinceInteraction > 20000) {
+    displayMode = TIME_MODE;
+    timeSinceInteraction = millis();
+  }
 }
 
 void cycleDisplayMode_ISR() {
+  timeSinceInteraction = millis();
   modeButtonTime = millis();
   if(modeButtonTime - lastModeButtonTime > 200) {
-    if(displayMode == TIME_ZONE_MODE) {
-    displayMode = 0;
+    if(displayMode == modeCount) {
+      displayMode = 0;
     } else {
       displayMode++;
     }
@@ -82,9 +92,10 @@ void cycleDisplayMode_ISR() {
 }
 
 void upButtonPress_ISR() {
+  timeSinceInteraction = millis();
   upButtonTime = millis();
   if(upButtonTime - lastUpButtonTime > 150) {
-    if(displayMode == TIME_MODE) {
+    if(displayMode == SET1224_MODE) {
       hr12 = !hr12;
     } else if (displayMode == TIME_ZONE_MODE) {
       if (hourOffset == 12)
@@ -116,6 +127,20 @@ void updateDisplay() {
       disp.print(hourOffset);
       disp.writeDisplay();
       break;
+    case SET1224_MODE:
+      if(hr12) {
+        disp.writeDigitAscii(0, '1', false);
+        disp.writeDigitAscii(1, '2', false);
+        disp.writeDigitAscii(3, 'h', false);
+        disp.writeDigitAscii(4, 'r', false);
+      } else {
+        disp.writeDigitAscii(0, '2', false);
+        disp.writeDigitAscii(1, '4', false);
+        disp.writeDigitAscii(3, 'h', false);
+        disp.writeDigitAscii(4, 'r', false);
+      }
+      disp.writeDisplay();
+      break;
     default:
       displayMode = TIME_MODE;
       break;
@@ -134,11 +159,17 @@ void displayTime(int h, int m, int timeOffset, bool hr12, bool showColon) {
     } else if (h == 0) {
       h = 12;
     }
+    disp.print(h * 100 + m, DEC);
+    if (isPm) {
+      disp.writeDigitNum(4, m % 10, true);
+    }
+  } else {
+    disp.writeDigitNum(0, h / 10, false);
+    disp.writeDigitNum(1, h % 10, false);
+    disp.writeDigitNum(3, m / 10, false);
+    disp.writeDigitNum(4, m % 10, false);
   }
-  disp.print(h * 100 + m, DEC);
-  if (isPm) {
-    disp.writeDigitNum(4, m % 10, true);
-  }
+  
   disp.drawColon(showColon);
   disp.writeDisplay();
 }
