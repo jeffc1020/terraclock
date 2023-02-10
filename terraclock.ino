@@ -1,48 +1,52 @@
+/* 
+ * TERRACLOCK
+ * A GPS-synchronized clock
+ * Copyright 2023 Jeff Cutcher 
+*/
+
 #include <Adafruit_LEDBackpack.h>
 #include <Adafruit_GPS.h>
 //#include <SoftwareSerial.h>
-
-/* TERRACLOCK
- * A GPS-synchronized clock
- * Copyright 2023 Jeff Cutcher */
 
 #define TIME_MODE 0
 #define SECONDS_MODE 1
 #define TIME_ZONE_MODE 2
 #define SET1224_MODE 3
-
 byte modeCount = 4;
-
-byte displayMode = TIME_MODE;
+byte currentMode = TIME_MODE;
 
 // Pinouts 
 const byte modeBtn = 2;
 const byte upBtn = 5;
-const byte rxPin = 3;
-const byte txPin = 4;
-
-// Time zone info (these must be ints)
-int hourOffset = -5;
-int minuteOffset = 0;
+const byte gpsRx = 3;
+const byte gpsTx = 4;
+/* I2C 7-segment pins:
+ * SDA: 18
+ * SCL: 19 */
 
 // Button debouncing
-unsigned long modeButtonTime = 0;
-unsigned long lastModeButtonTime = 0;
-unsigned long upButtonTime = 0;
-unsigned long lastUpButtonTime = 0;
+unsigned long modeBtnTime = 0;
+unsigned long lastModeBtnTime = 0;
+unsigned long upBtnTime = 0;
+unsigned long lastUpBtnTime = 0;
 
 // Has the clock been synched with GPS?
 bool neverSynched = true;
 
 bool hr12 = true;
 
+// Time zone info (these must be ints)
+int hourOffset = -5;
+int minuteOffset = 0;
+
 Adafruit_7segment disp = Adafruit_7segment();
 
-SoftwareSerial mySerial(rxPin, txPin);
+SoftwareSerial mySerial(gpsRx, gpsTx);
 Adafruit_GPS GPS(&mySerial);
 
 void setup() {
   pinMode(modeBtn, INPUT);
+  pinMode(upBtn, INPUT);
 
   GPS.begin(9600); // GPS module uses 9600 baud
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY); // get recommended minimum amount of data plus fix data
@@ -55,60 +59,58 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(upBtn), upButtonPress_ISR, RISING);
 }
 
-uint32_t timer = millis();
+uint32_t dispUpdateTimer = millis();
 unsigned long timeSinceInteraction = millis();
 void loop() {
   char c = GPS.read();
-  if (GPS.newNMEAreceived()) {
+  if (GPS.newNMEAreceived())
     GPS.parse(GPS.lastNMEA());
-  }
 
-  if(GPS.fix) {
+  if(GPS.fix)
     neverSynched = false;
-  }
 
-  if(millis() - timer > 100) {
-    timer = millis();
+  if(millis() - dispUpdateTimer > 100) {
+    dispUpdateTimer = millis();
     updateDisplay();
   }
 
   if(millis() - timeSinceInteraction > 20000) {
-    displayMode = TIME_MODE;
+    currentMode = TIME_MODE;
     timeSinceInteraction = millis();
   }
 }
 
 void cycleDisplayMode_ISR() {
   timeSinceInteraction = millis();
-  modeButtonTime = millis();
-  if(modeButtonTime - lastModeButtonTime > 200) {
-    if(displayMode == modeCount) {
-      displayMode = 0;
+  modeBtnTime = millis();
+  if(modeBtnTime - lastModeBtnTime > 200) {
+    if(currentMode == modeCount) {
+      currentMode = 0;
     } else {
-      displayMode++;
+      currentMode++;
     }
-  lastModeButtonTime = modeButtonTime;
+  lastModeBtnTime = modeBtnTime;
   }
 }
 
 void upButtonPress_ISR() {
   timeSinceInteraction = millis();
-  upButtonTime = millis();
-  if(upButtonTime - lastUpButtonTime > 150) {
-    if(displayMode == SET1224_MODE) {
+  upBtnTime = millis();
+  if(upBtnTime - lastUpBtnTime > 150) {
+    if(currentMode == SET1224_MODE) {
       hr12 = !hr12;
-    } else if (displayMode == TIME_ZONE_MODE) {
+    } else if (currentMode == TIME_ZONE_MODE) {
       if (hourOffset == 12)
         hourOffset = -12;
       else
         ++hourOffset;
     }
-    lastUpButtonTime = upButtonTime;
+    lastUpBtnTime = upBtnTime;
   }
 }
 
 void updateDisplay() {
-  switch(displayMode) {
+  switch(currentMode) {
     case TIME_MODE:
       if(neverSynched) {
           displayDashes();
@@ -142,7 +144,7 @@ void updateDisplay() {
       disp.writeDisplay();
       break;
     default:
-      displayMode = TIME_MODE;
+      currentMode = TIME_MODE;
       break;
   }
 }
