@@ -43,7 +43,15 @@ bool hr12 = true;
 int hourOffset = -5;
 int minuteOffset = 0;
 
-uint8_t brightness = 0;
+uint8_t brightness = 12;
+
+bool displayOn = true;
+
+uint64_t dispUpdateTimer = millis();
+volatile uint8_t dispUpdateFlag = 0;
+volatile uint8_t brightnessUpFlag = 0;
+volatile uint8_t brightnessDwnFlag = 0;
+volatile uint64_t timeSinceInteraction = millis();
 
 Adafruit_7segment disp = Adafruit_7segment();
 
@@ -67,12 +75,6 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(dwnBtn), dwnButtonPress_ISR, FALLING);
 }
 
-uint64_t dispUpdateTimer = millis();
-volatile uint8_t dispUpdateFlag = 0;
-volatile uint8_t brightnessUpFlag = 0;
-volatile uint8_t brightnessDwnFlag = 0;
-volatile uint64_t timeSinceInteraction = millis();
-
 void loop() {
 
   /* Read from GPS receiver */
@@ -94,7 +96,10 @@ void loop() {
   }
 
   if (brightnessUpFlag) {
-    if (brightness < 15) {
+    if (!displayOn) {
+      displayOn = true;
+      dispUpdateFlag = 1;
+    } else if (brightness < 15) {
       brightness += 4;
     }
     disp.setBrightness(brightness);
@@ -102,7 +107,10 @@ void loop() {
   }
 
   if (brightnessDwnFlag) {
-    if (brightness > 0) {
+    if (brightness == 0) {
+      displayOn = false;
+      dispUpdateFlag = 1;
+    } else if (brightness > 0) {
       brightness -= 4;
     }
     disp.setBrightness(brightness);
@@ -171,6 +179,11 @@ void dwnButtonPress_ISR() {
 }
 
 void updateDisplay() {
+  if (!displayOn) {
+    disp.clear();
+    disp.writeDisplay();
+    return;
+  }
   switch (currentMode) {
     case TIME_MODE:
       if (neverSynched) {
