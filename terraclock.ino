@@ -18,6 +18,7 @@ byte currentMode = TIME_MODE;
 // Pinouts 
 const byte modeBtn = 2;
 const byte upBtn = 5;
+const byte dwnBtn = 6;
 const byte gpsRx = 3;
 const byte gpsTx = 4;
 /* I2C 7-segment pins:
@@ -29,6 +30,8 @@ unsigned long modeBtnTime = 0;
 unsigned long lastModeBtnTime = 0;
 unsigned long upBtnTime = 0;
 unsigned long lastUpBtnTime = 0;
+unsigned long dwnBtnTime = 0;
+unsigned long lastDwnBtnTime = 0;
 
 // Has the clock been synched with GPS?
 bool neverSynched = true;
@@ -47,6 +50,7 @@ Adafruit_GPS GPS(&mySerial);
 void setup() {
   pinMode(modeBtn, INPUT);
   pinMode(upBtn, INPUT);
+  pinMode(dwnBtn, INPUT);
 
   GPS.begin(9600); 
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
@@ -57,23 +61,30 @@ void setup() {
 
   attachInterrupt(digitalPinToInterrupt(modeBtn), cycleDisplayMode_ISR, RISING);
   attachInterrupt(digitalPinToInterrupt(upBtn), upButtonPress_ISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(dwnBtn), dwnButtonPress_ISR, RISING);
 }
 
 uint32_t dispUpdateTimer = millis();
 unsigned long timeSinceInteraction = millis();
 void loop() {
+
+  // Read from GPS receiver
   char c = GPS.read();
-  if (GPS.newNMEAreceived())
+  if (GPS.newNMEAreceived()) {
     GPS.parse(GPS.lastNMEA());
+  }
 
   if(GPS.fix)
     neverSynched = false;
 
-  if(millis() - dispUpdateTimer > 100) {
+  // Update display periodically
+  if(millis() - dispUpdateTimer > 50) {
     dispUpdateTimer = millis();
     updateDisplay();
   }
 
+  /* Return to time display if 20 seconds has passed since
+    the clock has been interacted with */
   if(millis() - timeSinceInteraction > 20000) {
     currentMode = TIME_MODE;
     timeSinceInteraction = millis();
@@ -89,7 +100,7 @@ void cycleDisplayMode_ISR() {
     } else {
       currentMode++;
     }
-  lastModeBtnTime = modeBtnTime;
+    lastModeBtnTime = modeBtnTime;
   }
 }
 
@@ -106,6 +117,22 @@ void upButtonPress_ISR() {
         ++hourOffset;
     }
     lastUpBtnTime = upBtnTime;
+  }
+}
+
+void dwnButtonPress_ISR() {
+  timeSinceInteraction = millis();
+  dwnBtnTime = millis();
+  if(dwnBtnTime - lastDwnBtnTime > 150) {
+    if(currentMode == SET1224_MODE) {
+      hr12 = !hr12;
+    } else if (currentMode == TIME_ZONE_MODE) {
+      if (hourOffset == -12)
+        hourOffset = 12;
+      else
+        --hourOffset;
+    }
+    lastDwnBtnTime = dwnBtnTime;
   }
 }
 
