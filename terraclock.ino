@@ -48,8 +48,8 @@ void setup() {
   pinMode(modeBtn, INPUT);
   pinMode(upBtn, INPUT);
 
-  GPS.begin(9600); // GPS module uses 9600 baud
-  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY); // get recommended minimum amount of data plus fix data
+  GPS.begin(9600); 
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_2HZ);
 
   disp.begin(0x70);
@@ -115,7 +115,8 @@ void updateDisplay() {
       if(neverSynched) {
           displayDashes();
       } else {
-        displayTime(GPS.hour, GPS.minute, hourOffset, hr12, (GPS.seconds % 2 == 1));
+        displayTime(GPS.hour, GPS.minute, hourOffset, hr12, 
+          (GPS.seconds % 2 == 1));
       }
       break;
     case SECONDS_MODE:
@@ -195,7 +196,8 @@ void displaySeconds(byte sec) {
 }
 
 /**
- * Offsets inputHour by timeOffset and returns the result. Does not handle dates (yet!)
+ * Offsets inputHour by timeOffset and returns the result. 
+ * Does not handle dates (yet!)
  * 
  * @param inputHour The hour (usually GMT)
  * @param timeOffset Number of hours to add or subtract from inputHour
