@@ -8,6 +8,8 @@
 #include <Adafruit_GPS.h>
 //#include <SoftwareSerial.h>
 
+#define DEBOUNCE_TIME 175
+
 #define TIME_MODE 0
 #define SECONDS_MODE 1
 #define TIME_ZONE_MODE 2
@@ -41,6 +43,8 @@ bool hr12 = true;
 int hourOffset = -5;
 int minuteOffset = 0;
 
+uint8_t brightness = 0;
+
 Adafruit_7segment disp = Adafruit_7segment();
 
 SoftwareSerial mySerial(gpsRx, gpsTx);
@@ -56,7 +60,7 @@ void setup() {
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
 
   disp.begin(0x70);
-  disp.setBrightness(0);
+  disp.setBrightness(brightness);
 
   attachInterrupt(digitalPinToInterrupt(modeBtn), cycleDisplayMode_ISR, FALLING);
   attachInterrupt(digitalPinToInterrupt(upBtn), upButtonPress_ISR, FALLING);
@@ -65,6 +69,8 @@ void setup() {
 
 uint64_t dispUpdateTimer = millis();
 volatile uint8_t dispUpdateFlag = 0;
+volatile uint8_t brightnessUpFlag = 0;
+volatile uint8_t brightnessDwnFlag = 0;
 volatile uint64_t timeSinceInteraction = millis();
 
 void loop() {
@@ -83,7 +89,24 @@ void loop() {
   if (dispUpdateFlag || (millis() - dispUpdateTimer > 250)) {
     dispUpdateFlag = 0;
     dispUpdateTimer = millis();
+    /* this should only be called here!!! */
     updateDisplay();
+  }
+
+  if (brightnessUpFlag) {
+    if (brightness < 15) {
+      brightness += 4;
+    }
+    disp.setBrightness(brightness);
+    brightnessUpFlag = 0;
+  }
+
+  if (brightnessDwnFlag) {
+    if (brightness > 0) {
+      brightness -= 4;
+    }
+    disp.setBrightness(brightness);
+    brightnessDwnFlag = 0;
   }
 
   /* Return to time display if 20 seconds have passed since the clock has been
@@ -91,13 +114,14 @@ void loop() {
   if (millis() - timeSinceInteraction > 20000) {
     currentMode = TIME_MODE;
     timeSinceInteraction = millis();
+    dispUpdateFlag = 1;
   }
 }
 
 void cycleDisplayMode_ISR() {
   timeSinceInteraction = millis();
   modeBtnTime = millis();
-  if (modeBtnTime - lastModeBtnTime > 200) {
+  if (modeBtnTime - lastModeBtnTime > DEBOUNCE_TIME) {
     if (currentMode == modeCount) {
       currentMode = 0;
     } else {
@@ -111,8 +135,10 @@ void cycleDisplayMode_ISR() {
 void upButtonPress_ISR() {
   timeSinceInteraction = millis();
   upBtnTime = millis();
-  if (upBtnTime - lastUpBtnTime > 150) {
-    if (currentMode == SET1224_MODE) {
+  if (upBtnTime - lastUpBtnTime > DEBOUNCE_TIME) {
+    if (currentMode == TIME_MODE) {
+      brightnessUpFlag = 1;
+    } else if (currentMode == SET1224_MODE) {
       hr12 = !hr12;
     } else if (currentMode == TIME_ZONE_MODE) {
       if (hourOffset == 12)
@@ -128,8 +154,10 @@ void upButtonPress_ISR() {
 void dwnButtonPress_ISR() {
   timeSinceInteraction = millis();
   dwnBtnTime = millis();
-  if (dwnBtnTime - lastDwnBtnTime > 150) {
-    if (currentMode == SET1224_MODE) {
+  if (dwnBtnTime - lastDwnBtnTime > DEBOUNCE_TIME) {
+    if (currentMode == TIME_MODE) {
+      brightnessDwnFlag = 1;
+    } else if (currentMode == SET1224_MODE) {
       hr12 = !hr12;
     } else if (currentMode == TIME_ZONE_MODE) {
       if (hourOffset == -12)
