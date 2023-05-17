@@ -12,33 +12,32 @@
 #define SECONDS_MODE 1
 #define TIME_ZONE_MODE 2
 #define SET1224_MODE 3
-byte modeCount = 4;
-byte currentMode = TIME_MODE;
+const uint8_t modeCount = 4;
+volatile uint8_t currentMode = TIME_MODE;
 
-// Pinouts 
-const byte modeBtn = 2;
-const byte upBtn = 5;
-const byte dwnBtn = 6;
-const byte gpsRx = 3;
-const byte gpsTx = 4;
+/* Pinouts */
+const uint8_t modeBtn = 6;
+const uint8_t upBtn = 7;
+const uint8_t dwnBtn = 8;
+const uint8_t gpsRx = 3;
+const uint8_t gpsTx = 4;
 /* I2C 7-segment pins:
  * SDA: 18
  * SCL: 19 */
 
-// Button debouncing
-unsigned long modeBtnTime = 0;
-unsigned long lastModeBtnTime = 0;
-unsigned long upBtnTime = 0;
-unsigned long lastUpBtnTime = 0;
-unsigned long dwnBtnTime = 0;
-unsigned long lastDwnBtnTime = 0;
+/* Button debouncing */
+volatile uint64_t modeBtnTime = 0;
+volatile uint64_t lastModeBtnTime = 0;
+volatile uint64_t upBtnTime = 0;
+volatile uint64_t lastUpBtnTime = 0;
+volatile uint64_t dwnBtnTime = 0;
+volatile uint64_t lastDwnBtnTime = 0;
 
-// Has the clock been synched with GPS?
 bool neverSynched = true;
 
 bool hr12 = true;
 
-// Time zone info (these must be ints)
+/* Time zone info (these must be ints) */
 int hourOffset = -5;
 int minuteOffset = 0;
 
@@ -48,44 +47,48 @@ SoftwareSerial mySerial(gpsRx, gpsTx);
 Adafruit_GPS GPS(&mySerial);
 
 void setup() {
-  pinMode(modeBtn, INPUT);
-  pinMode(upBtn, INPUT);
-  pinMode(dwnBtn, INPUT);
+  pinMode(modeBtn, INPUT_PULLUP);
+  pinMode(upBtn, INPUT_PULLUP);
+  pinMode(dwnBtn, INPUT_PULLUP);
 
   GPS.begin(9600); 
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
-  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_2HZ);
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
 
   disp.begin(0x70);
   disp.setBrightness(0);
 
-  attachInterrupt(digitalPinToInterrupt(modeBtn), cycleDisplayMode_ISR, RISING);
-  attachInterrupt(digitalPinToInterrupt(upBtn), upButtonPress_ISR, RISING);
-  attachInterrupt(digitalPinToInterrupt(dwnBtn), dwnButtonPress_ISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(modeBtn), cycleDisplayMode_ISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(upBtn), upButtonPress_ISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(dwnBtn), dwnButtonPress_ISR, FALLING);
 }
 
-uint32_t dispUpdateTimer = millis();
-unsigned long timeSinceInteraction = millis();
+uint64_t dispUpdateTimer = millis();
+volatile uint8_t dispUpdateFlag = 0;
+volatile uint64_t timeSinceInteraction = millis();
+
 void loop() {
 
-  // Read from GPS receiver
+  /* Read from GPS receiver */
   char c = GPS.read();
   if (GPS.newNMEAreceived()) {
     GPS.parse(GPS.lastNMEA());
+    dispUpdateFlag = 1;
   }
 
-  if(GPS.fix)
+  if (GPS.fix)
     neverSynched = false;
 
-  // Update display periodically
-  if(millis() - dispUpdateTimer > 50) {
+  /* Update display periodically or after some event */
+  if (dispUpdateFlag || (millis() - dispUpdateTimer > 250)) {
+    dispUpdateFlag = 0;
     dispUpdateTimer = millis();
     updateDisplay();
   }
 
-  /* Return to time display if 20 seconds has passed since
-    the clock has been interacted with */
-  if(millis() - timeSinceInteraction > 20000) {
+  /* Return to time display if 20 seconds have passed since the clock has been
+    interacted with */
+  if (millis() - timeSinceInteraction > 20000) {
     currentMode = TIME_MODE;
     timeSinceInteraction = millis();
   }
@@ -94,21 +97,22 @@ void loop() {
 void cycleDisplayMode_ISR() {
   timeSinceInteraction = millis();
   modeBtnTime = millis();
-  if(modeBtnTime - lastModeBtnTime > 200) {
-    if(currentMode == modeCount) {
+  if (modeBtnTime - lastModeBtnTime > 200) {
+    if (currentMode == modeCount) {
       currentMode = 0;
     } else {
       currentMode++;
     }
     lastModeBtnTime = modeBtnTime;
+    dispUpdateFlag = 1;
   }
 }
 
 void upButtonPress_ISR() {
   timeSinceInteraction = millis();
   upBtnTime = millis();
-  if(upBtnTime - lastUpBtnTime > 150) {
-    if(currentMode == SET1224_MODE) {
+  if (upBtnTime - lastUpBtnTime > 150) {
+    if (currentMode == SET1224_MODE) {
       hr12 = !hr12;
     } else if (currentMode == TIME_ZONE_MODE) {
       if (hourOffset == 12)
@@ -117,14 +121,15 @@ void upButtonPress_ISR() {
         ++hourOffset;
     }
     lastUpBtnTime = upBtnTime;
+    dispUpdateFlag = 1;
   }
 }
 
 void dwnButtonPress_ISR() {
   timeSinceInteraction = millis();
   dwnBtnTime = millis();
-  if(dwnBtnTime - lastDwnBtnTime > 150) {
-    if(currentMode == SET1224_MODE) {
+  if (dwnBtnTime - lastDwnBtnTime > 150) {
+    if (currentMode == SET1224_MODE) {
       hr12 = !hr12;
     } else if (currentMode == TIME_ZONE_MODE) {
       if (hourOffset == -12)
@@ -133,13 +138,14 @@ void dwnButtonPress_ISR() {
         --hourOffset;
     }
     lastDwnBtnTime = dwnBtnTime;
+    dispUpdateFlag = 1;
   }
 }
 
 void updateDisplay() {
-  switch(currentMode) {
+  switch (currentMode) {
     case TIME_MODE:
-      if(neverSynched) {
+      if (neverSynched) {
           displayDashes();
       } else {
         displayTime(GPS.hour, GPS.minute, hourOffset, hr12, 
@@ -147,7 +153,7 @@ void updateDisplay() {
       }
       break;
     case SECONDS_MODE:
-      if(neverSynched) {
+      if (neverSynched) {
           displayDashes();
       } else {
         displaySeconds(GPS.seconds);
@@ -158,7 +164,7 @@ void updateDisplay() {
       disp.writeDisplay();
       break;
     case SET1224_MODE:
-      if(hr12) {
+      if (hr12) {
         disp.writeDigitAscii(0, '1', false);
         disp.writeDigitAscii(1, '2', false);
         disp.writeDigitAscii(3, 'h', false);
@@ -222,21 +228,15 @@ void displaySeconds(byte sec) {
   disp.writeDisplay();
 }
 
-/**
- * Offsets inputHour by timeOffset and returns the result. 
- * Does not handle dates (yet!)
- * 
- * @param inputHour The hour (usually GMT)
- * @param timeOffset Number of hours to add or subtract from inputHour
- * @return inputHour + timeOffset, rolling over if needed
- */
+/* Offsets inputHour by timeOffset and returns the result. 
+  Does not handle dates (yet!) */
 int timeZoneCorrection(int inputHour, int timeOffset) {
   int result = inputHour + timeOffset;
-  if(result < 0) {
-    return 24 + (result);
+  if (result < 0) {
+    return 24 + result;
   } 
-  else if(result > 23) {
-    return (result - 24);
+  else if (result > 23) {
+    return result - 24;
   } 
   else {
     return result;
