@@ -6,7 +6,6 @@
 
 #include <Adafruit_LEDBackpack.h>
 #include <Adafruit_GPS.h>
-//#include <SoftwareSerial.h>
 
 #define DEBOUNCE_TIME 175
 
@@ -18,14 +17,12 @@ const uint8_t modeCount = 4;
 volatile uint8_t currentMode = TIME_MODE;
 
 /* Pinouts */
+const uint8_t gpsRx = 3;
+const uint8_t gpsTx = 4;
 const uint8_t modeBtn = 6;
 const uint8_t upBtn = 7;
 const uint8_t dwnBtn = 8;
-const uint8_t gpsRx = 3;
-const uint8_t gpsTx = 4;
-/* I2C 7-segment pins:
- * SDA: 18
- * SCL: 19 */
+/* I2C 7-segment pins – SDA: 18, SCL: 19 */
 
 /* Button debouncing */
 volatile uint64_t modeBtnTime = 0;
@@ -36,7 +33,6 @@ volatile uint64_t dwnBtnTime = 0;
 volatile uint64_t lastDwnBtnTime = 0;
 
 bool neverSynched = true;
-
 bool hr12 = true;
 
 /* Time zone info (these must be ints) */
@@ -44,39 +40,39 @@ int hourOffset = -5;
 int minuteOffset = 0;
 
 uint8_t brightness = 12;
-
 bool displayOn = true;
 
 uint64_t dispUpdateTimer = millis();
+volatile uint64_t timeSinceInteraction = millis();
+
 volatile uint8_t dispUpdateFlag = 0;
 volatile uint8_t brightnessUpFlag = 0;
 volatile uint8_t brightnessDwnFlag = 0;
-volatile uint64_t timeSinceInteraction = millis();
-
-Adafruit_7segment disp = Adafruit_7segment();
 
 SoftwareSerial mySerial(gpsRx, gpsTx);
 Adafruit_GPS GPS(&mySerial);
+
+Adafruit_7segment disp = Adafruit_7segment();
 
 void setup() {
   pinMode(modeBtn, INPUT_PULLUP);
   pinMode(upBtn, INPUT_PULLUP);
   pinMode(dwnBtn, INPUT_PULLUP);
 
+  attachInterrupt(digitalPinToInterrupt(modeBtn), cycleDisplayMode_ISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(upBtn), upButtonPress_ISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(dwnBtn), dwnButtonPress_ISR, FALLING);
+
+  
   GPS.begin(9600); 
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
 
   disp.begin(0x70);
   disp.setBrightness(brightness);
-
-  attachInterrupt(digitalPinToInterrupt(modeBtn), cycleDisplayMode_ISR, FALLING);
-  attachInterrupt(digitalPinToInterrupt(upBtn), upButtonPress_ISR, FALLING);
-  attachInterrupt(digitalPinToInterrupt(dwnBtn), dwnButtonPress_ISR, FALLING);
 }
 
 void loop() {
-
   /* Read from GPS receiver */
   char c = GPS.read();
   if (GPS.newNMEAreceived()) {
@@ -99,21 +95,15 @@ void loop() {
     if (!displayOn) {
       displayOn = true;
       dispUpdateFlag = 1;
-    } else if (brightness < 15) {
-      brightness += 4;
     }
-    disp.setBrightness(brightness);
     brightnessUpFlag = 0;
   }
 
   if (brightnessDwnFlag) {
-    if (brightness == 0) {
+    if (displayOn) {
       displayOn = false;
       dispUpdateFlag = 1;
-    } else if (brightness > 0) {
-      brightness -= 4;
     }
-    disp.setBrightness(brightness);
     brightnessDwnFlag = 0;
   }
 
@@ -129,6 +119,8 @@ void loop() {
 void cycleDisplayMode_ISR() {
   timeSinceInteraction = millis();
   modeBtnTime = millis();
+  /* Wake display if it is off */
+  brightnessUpFlag = 1;
   if (modeBtnTime - lastModeBtnTime > DEBOUNCE_TIME) {
     if (currentMode == modeCount) {
       currentMode = 0;
