@@ -15,11 +15,10 @@
 
 #define TIME_MODE 0
 #define SECONDS_MODE 1
-#define ALARM_H_SET_MODE 2
-#define ALARM_M_SET_MODE 3
-#define TIME_ZONE_MODE 4
-#define SET1224_MODE 5
-const uint8_t modeCount = 6;
+#define ALARM_SET_MODE 2
+#define TIME_ZONE_MODE 3
+#define SET1224_MODE 4
+const uint8_t modeCount = 5;
 volatile uint8_t currentMode = TIME_MODE;
 
 /* Pinouts */
@@ -47,6 +46,10 @@ int hourOffset = 0;
 
 uint8_t alarmH = 0;
 uint8_t alarmM = 0;
+
+bool alarmEnabled = true;
+bool alarmTripped = false;
+bool alarmSilenced = false;
 
 uint8_t brightness = 12;
 bool displayOn = true;
@@ -113,8 +116,18 @@ void loop() {
     digitalWrite(fixLED, LOW);
   }
 
-  /* Testing alarm buzzer */
-  if (currentMode == SECONDS_MODE) {
+  /* Trip the alarm */
+  if (alarmEnabled && (alarmH == timeZoneCorrection(GPS.hour, hourOffset) 
+    && alarmM == GPS.minute)) {
+    alarmTripped = true;
+  } else {
+    alarmTripped = false;
+    alarmSilenced = false;
+  }
+
+  /* Sound the alarm */
+  if (alarmTripped && !alarmSilenced) {
+    brightnessUpFlag = 1;
     long dividedMillis = millis() >> 8;
     if(dividedMillis % 2 == 0)
       turnOnBuzzer();
@@ -184,7 +197,9 @@ void modeButtonPress_ISR() {
   /* Wake display if it is off */
   brightnessUpFlag = 1;
   if (modeBtnTime - lastModeBtnTime > DEBOUNCE_TIME) {
-    if (currentMode == modeCount) {
+    if (alarmTripped && !alarmSilenced) {
+      alarmSilenced = true;
+    } else if (currentMode == modeCount) {
       currentMode = 0;
     } else {
       currentMode++;
@@ -211,19 +226,16 @@ void downButtonPress_ISR() {
 /* Perform actions that should occur when the up button is pressed */
 void handleUpButtonPress() {
   timeSinceInteraction = millis();
-  if (currentMode == TIME_MODE) {
+  lastUpBtnTime = upBtnTime;
+  if (alarmTripped && !alarmSilenced) {
+    alarmSilenced = true;
+  } else if (currentMode == TIME_MODE) {
     brightnessUpFlag = 1;
-  } else if (currentMode == ALARM_H_SET_MODE) {
+  } else if (currentMode == ALARM_SET_MODE) {
     if (alarmH == 23) {
       alarmH = 0;
     } else {
       ++alarmH;
-    }
-  } else if (currentMode == ALARM_M_SET_MODE) {
-    if (alarmM == 59) {
-      alarmM = 0;
-    } else {
-      ++alarmM;
     }
   } else if (currentMode == SET1224_MODE) {
     hr12 = !hr12;
@@ -235,26 +247,22 @@ void handleUpButtonPress() {
       ++hourOffset;
     hourOffsetChangedFlag = 1;
   }
-  lastUpBtnTime = upBtnTime;
   dispUpdateFlag = 1;
 }
 
 /* Perform actions that should occur when the down button is pressed */
 void handleDownButtonPress() {
   timeSinceInteraction = millis();
-  if (currentMode == TIME_MODE) {
+  lastDownBtnTime = downBtnTime;
+  if (alarmTripped && !alarmSilenced) {
+    alarmSilenced = true;
+  } else if (currentMode == TIME_MODE) {
     brightnessDownFlag = 1;
-  } else if (currentMode == ALARM_H_SET_MODE) {
-    if (alarmH == 0) {
-      alarmH = 23;
+  } else if (currentMode == ALARM_SET_MODE) {
+    if (alarmM == 59) {
+      alarmM = 0;
     } else {
-      --alarmH;
-    }
-  } else if (currentMode == ALARM_M_SET_MODE) {
-    if (alarmM == 0) {
-      alarmM = 59;
-    } else {
-      --alarmM;
+      ++alarmM;
     }
   } else if (currentMode == SET1224_MODE) {
     hr12 = !hr12;
@@ -266,7 +274,6 @@ void handleDownButtonPress() {
       --hourOffset;
     hourOffsetChangedFlag = 1;
   }
-  lastDownBtnTime = downBtnTime;
   dispUpdateFlag = 1;
 }
 
@@ -284,10 +291,7 @@ void updateDisplay() {
     case SECONDS_MODE:
       displaySeconds(GPS.seconds);
       break;
-    case ALARM_H_SET_MODE:
-      displayTimeFast(alarmH, alarmM, hr12, true);
-      break;
-    case ALARM_M_SET_MODE:
+    case ALARM_SET_MODE:
       displayTimeFast(alarmH, alarmM, hr12, true);
       break;
     case TIME_ZONE_MODE:
