@@ -15,9 +15,11 @@
 
 #define TIME_MODE 0
 #define SECONDS_MODE 1
-#define TIME_ZONE_MODE 2
-#define SET1224_MODE 3
-const uint8_t modeCount = 4;
+#define ALARM_H_SET_MODE 2
+#define ALARM_M_SET_MODE 3
+#define TIME_ZONE_MODE 4
+#define SET1224_MODE 5
+const uint8_t modeCount = 6;
 volatile uint8_t currentMode = TIME_MODE;
 
 /* Pinouts */
@@ -26,6 +28,7 @@ const uint8_t gpsTx = 4;
 const uint8_t modeButton = 6;
 const uint8_t upButton = 7;
 const uint8_t downButton = 8;
+const uint8_t alarmBuzzer = 9;
 const uint8_t fixLED = A7;
 /* I2C 7-segment pins – SDA: 18, SCL: 19 */
 
@@ -37,11 +40,13 @@ volatile uint64_t lastUpBtnTime = 0;
 volatile uint64_t downBtnTime = 0;
 volatile uint64_t lastDownBtnTime = 0;
 
-bool neverSynched = true;
 bool hr12 = true;
 
 /* Time zone info (these must be ints) */
 int hourOffset = 0;
+
+uint8_t alarmH = 0;
+uint8_t alarmM = 0;
 
 uint8_t brightness = 12;
 bool displayOn = true;
@@ -67,6 +72,7 @@ void setup() {
   pinMode(downButton, INPUT_PULLUP);
 
   pinMode(fixLED, OUTPUT);
+  pinMode(alarmBuzzer, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(modeButton), modeButtonPress_ISR, FALLING);
   attachInterrupt(digitalPinToInterrupt(upButton), upButtonPress_ISR, FALLING);
@@ -99,7 +105,6 @@ void loop() {
   }
 
   if (GPS.fix) {
-    neverSynched = false;
     if (displayOn) 
       digitalWrite(fixLED, HIGH);
     else
@@ -108,6 +113,18 @@ void loop() {
     digitalWrite(fixLED, LOW);
   }
 
+  /* Testing alarm buzzer */
+  if (currentMode == SECONDS_MODE) {
+    long dividedMillis = millis() >> 8;
+    if(dividedMillis % 2 == 0)
+      turnOnBuzzer();
+    else
+      turnOffBuzzer();
+  } else {
+    turnOffBuzzer();
+  }
+
+  /* Button holding */
   if (digitalRead(upButton) == LOW  && (millis() - upBtnTime) > 200) {
     handleUpButtonPress();
     upBtnTime = millis();
@@ -196,6 +213,18 @@ void handleUpButtonPress() {
   timeSinceInteraction = millis();
   if (currentMode == TIME_MODE) {
     brightnessUpFlag = 1;
+  } else if (currentMode == ALARM_H_SET_MODE) {
+    if (alarmH == 23) {
+      alarmH = 0;
+    } else {
+      ++alarmH;
+    }
+  } else if (currentMode == ALARM_M_SET_MODE) {
+    if (alarmM == 59) {
+      alarmM = 0;
+    } else {
+      ++alarmM;
+    }
   } else if (currentMode == SET1224_MODE) {
     hr12 = !hr12;
     hr12ChangedFlag = 1;
@@ -215,6 +244,18 @@ void handleDownButtonPress() {
   timeSinceInteraction = millis();
   if (currentMode == TIME_MODE) {
     brightnessDownFlag = 1;
+  } else if (currentMode == ALARM_H_SET_MODE) {
+    if (alarmH == 0) {
+      alarmH = 23;
+    } else {
+      --alarmH;
+    }
+  } else if (currentMode == ALARM_M_SET_MODE) {
+    if (alarmM == 0) {
+      alarmM = 59;
+    } else {
+      --alarmM;
+    }
   } else if (currentMode == SET1224_MODE) {
     hr12 = !hr12;
     hr12ChangedFlag = 1;
@@ -237,19 +278,17 @@ void updateDisplay() {
   }
   switch (currentMode) {
     case TIME_MODE:
-      if (neverSynched) {
-          displayDashes();
-      } else {
-        displayTime(GPS.hour, GPS.minute, hourOffset, hr12, 
-          (GPS.seconds % 2 == 1));
-      }
+      displayTime(GPS.hour, GPS.minute, hourOffset, hr12, 
+        (GPS.seconds % 2 == 1));
       break;
     case SECONDS_MODE:
-      if (neverSynched) {
-          displayDashes();
-      } else {
-        displaySeconds(GPS.seconds);
-      }
+      displaySeconds(GPS.seconds);
+      break;
+    case ALARM_H_SET_MODE:
+      displayTimeFast(alarmH, alarmM, hr12, true);
+      break;
+    case ALARM_M_SET_MODE:
+      displayTimeFast(alarmH, alarmM, hr12, true);
       break;
     case TIME_ZONE_MODE:
       disp.print(hourOffset);
@@ -302,6 +341,32 @@ void displayTime(int h, int m, int timeOffset, bool hr12, bool showColon) {
   disp.writeDisplay();
 }
 
+void displayTimeFast(uint8_t h, uint8_t m, bool hr12, bool showColon) {
+  bool isPm = false;
+  if (hr12) {
+    if (h >= 12) {
+      isPm = true;
+      if (h > 12) {
+        h = h - 12;
+      }
+    } else if (h == 0) {
+      h = 12;
+    }
+    disp.print(h * 100 + m, DEC);
+    if (isPm) {
+      disp.writeDigitNum(4, m % 10, true);
+    }
+  } else {
+    disp.writeDigitNum(0, h / 10, false);
+    disp.writeDigitNum(1, h % 10, false);
+    disp.writeDigitNum(3, m / 10, false);
+    disp.writeDigitNum(4, m % 10, false);
+  }
+
+  disp.drawColon(showColon);
+  disp.writeDisplay();
+}
+
 void displayDashes() {
   disp.writeDigitRaw(0, 0b01000000);
   disp.writeDigitRaw(1, 0b01000000);
@@ -318,6 +383,14 @@ void displaySeconds(byte sec) {
     disp.writeDigitNum(3, 0);
   }
   disp.writeDisplay();
+}
+
+void turnOnBuzzer() {
+  analogWrite(alarmBuzzer, 120);
+}
+
+void turnOffBuzzer() {
+  digitalWrite(alarmBuzzer, LOW);
 }
 
 /* Offsets inputHour by timeOffset and returns the result. 
