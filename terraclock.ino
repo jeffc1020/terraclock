@@ -127,7 +127,7 @@ void loop() {
 
   /* Sound the alarm */
   if (alarmTripped && !alarmSilenced) {
-    brightnessUpFlag = 1;
+    displayOn = true;
     long dividedMillis = millis() >> 8;
     if(dividedMillis % 2 == 0)
       turnOnBuzzer();
@@ -232,10 +232,10 @@ void handleUpButtonPress() {
   } else if (currentMode == TIME_MODE) {
     brightnessUpFlag = 1;
   } else if (currentMode == ALARM_SET_MODE) {
-    if (alarmH == 23) {
-      alarmH = 0;
+    if (alarmM == 59) {
+      alarmM = 0;
     } else {
-      ++alarmH;
+      ++alarmM;
     }
   } else if (currentMode == SET1224_MODE) {
     hr12 = !hr12;
@@ -259,10 +259,10 @@ void handleDownButtonPress() {
   } else if (currentMode == TIME_MODE) {
     brightnessDownFlag = 1;
   } else if (currentMode == ALARM_SET_MODE) {
-    if (alarmM == 59) {
-      alarmM = 0;
+    if (alarmH == 23) {
+      alarmH = 0;
     } else {
-      ++alarmM;
+      ++alarmH;
     }
   } else if (currentMode == SET1224_MODE) {
     hr12 = !hr12;
