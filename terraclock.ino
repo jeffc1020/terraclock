@@ -19,7 +19,6 @@
 #define TIME_ZONE_MODE 3
 #define SET1224_MODE 4
 const uint8_t modeCount = 5;
-volatile uint8_t currentMode = TIME_MODE;
 
 /* Pinouts */
 const uint8_t gpsRx = 3;
@@ -39,18 +38,16 @@ volatile uint64_t lastUpBtnTime = 0;
 volatile uint64_t downBtnTime = 0;
 volatile uint64_t lastDownBtnTime = 0;
 
-bool hr12 = true;
 
-/* Time zone info (these must be ints) */
+/* Internal state */
+volatile uint8_t currentMode = TIME_MODE;
 int hourOffset = 0;
-
+bool hr12 = true;
 uint8_t alarmH = 0;
 uint8_t alarmM = 0;
-
 bool alarmEnabled = true;
 bool alarmTripped = false;
 bool alarmSilenced = false;
-
 uint8_t brightness = 12;
 bool displayOn = true;
 
